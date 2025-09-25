@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>SJF Gantt Chart Animation</title>
+    <div class="title-text">
+  SHORTEST JOB FIRST SCHEDULING ( NON - PREEMPTIVE )
+</div>
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #f9d423 0%, #ff4e50 100%);
+            min-height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            min-height: 100vh;
+            position: relative;
+        }
+        .title-text {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-weight: bold;
+  font-size: 18px;
+  color: black;
+  user-select: none;
+  pointer-events: none;
+  z-index: 10;
+}
+
+        .top-bar {
+            width: 100%;
+            display: flex;
+            justify-content: flex-end;
+            align-items: flex-start;
+            margin-top: 30px;
+            margin-bottom: 10px;
+        }
+        #processTable {
+            border: 2px solid #333;
+            border-radius: 8px;
+            background: #fffbe6;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-right: 40px;
+            min-width: 220px;
+        }
+        #processTable th, #processTable td {
+            padding: 6px 10px;
+            text-align: center;
+        }
+        #processTable th {
+            background: #ffe082;
+        }
+        .gantt-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 10px;
+        }
+        #sjfCanvas {
+            border: 3px solid #333;
+            border-radius: 10px;
+            background: #e1f5fe;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+        }
+        #timePeriod {
+            text-align: center;
+            font-size: 17px;
+            margin-top: 12px;
+            color: #333;
+            font-weight: bold;
+        }
+        .footer {
+            position: fixed;
+            right: 20px;
+            bottom: 10px;
+            font-size: 16px;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 1px 1px 4px #333;
+            pointer-events: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="top-bar">
+            <table id="processTable" border="1" cellpadding="5" style="border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th>Process</th>
+                        <th>Arrival</th>
+                        <th>Burst</th>
+                        <th>Completion</th>
+                        <th>Turnaround</th>
+                        <th>Waiting</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="gantt-area">
+            <canvas id="sjfCanvas" height="200"></canvas>
+            <div id="timePeriod"></div>
+        </div>
+        <div class="footer">
+            AADITH GEETH MOHAN AND AKSHAY KUMAR N
+        </div>
+    </div>
+    <script>
+    const canvas = document.getElementById('sjfCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const processes = [
+        { id: 'P1', arrival: 0, burst: 5, color: '#FFD700' },
+        { id: 'P2', arrival: 1, burst: 3, color: '#FF8C00' },
+        { id: 'P3', arrival: 2, burst: 8, color: '#32CD32' }
+    ];
+
+    // SJF Scheduling
+    let time = 0;
+    let completed = [];
+    const schedule = [];
+    let readyQueue = [];
+
+    while (completed.length < processes.length) {
+        readyQueue = processes.filter(p => p.arrival <= time && !completed.includes(p));
+        if (readyQueue.length > 0) {
+            let nextProcess = readyQueue.reduce((prev, curr) => prev.burst < curr.burst ? prev : curr);
+            let start = Math.max(time, nextProcess.arrival);
+            let finish = start + nextProcess.burst;
+            schedule.push({...nextProcess, start, finish});
+            time = finish;
+            completed.push(nextProcess);
+        } else {
+            time++;
+        }
+    }
+
+    // Calculate table data
+    const tableData = schedule.map(proc => {
+        const turnaround = proc.finish - proc.arrival;
+        const waiting = turnaround - proc.burst;
+        return {
+            id: proc.id,
+            arrival: proc.arrival,
+            burst: proc.burst,
+            completion: proc.finish,
+            turnaround,
+            waiting
+        };
+    });
+
+    // Fill table
+    const tbody = document.querySelector('#processTable tbody');
+    tbody.innerHTML = tableData.map(row =>
+        `<tr>
+            <td>${row.id}</td>
+            <td>${row.arrival}</td>
+            <td>${row.burst}</td>
+            <td>${row.completion}</td>
+            <td>${row.turnaround}</td>
+            <td>${row.waiting}</td>
+        </tr>`
+    ).join('');
+
+    // Gantt chart config
+    const scale = 50;
+    const maxTime = schedule[schedule.length-1].finish;
+    document.getElementById('timePeriod').textContent = `Time Period: 0 to ${maxTime} ms`;
+
+    // Set canvas width dynamically based on maxTime and scale
+    canvas.width = 150 + maxTime * scale;  // extra margin
+
+    // Animation config
+    const processAnimDuration = 7000; // ms per process (slower)
+    const processPauseDuration = 4000; // ms pause after each process
+    const frameDelay = processAnimDuration / Math.max(...schedule.map(proc => proc.burst));
+
+    let processIdx = 0;
+    let processFrame = 0;
+    let isPaused = false;
+
+    function drawEmptyGantt() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw main timeline
+        ctx.save();
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(100, 120);
+        ctx.lineTo(100 + maxTime * scale, 120);
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw time ticks and labels
+        ctx.font = "15px Arial";
+        ctx.fillStyle = "#333";
+        for (let t = 0; t <= maxTime; t++) {
+            let x = 100 + t * scale;
+            ctx.save();
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x, 115);
+            ctx.lineTo(x, 125);
+            ctx.stroke();
+            ctx.restore();
+            ctx.fillText(t, x - 5, 140);
+        }
+    }
+    drawEmptyGantt();
+
+    function animateGantt() {
+        drawEmptyGantt();
+
+        // Draw completed processes as full bars outlined and filled
+        for (let i = 0; i < processIdx; i++) {
+            const proc = schedule[i];
+            const y = 80;
+            const barStart = 100 + proc.start * scale;
+
+            // Draw full outline bar
+            ctx.save();
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(barStart, y, proc.burst * scale, 30);
+            ctx.restore();
+
+            // Draw filled bar fully
+            ctx.fillStyle = proc.color;
+            ctx.fillRect(barStart, y, proc.burst * scale, 30);
+
+            ctx.fillStyle = "#333";
+            ctx.font = "16px Arial";
+            ctx.fillText(proc.id, barStart + 5, y + 20);
+            ctx.font = "13px Arial";
+            ctx.fillText(proc.start, barStart - 10, y - 5);
+            ctx.fillText(proc.finish, barStart + proc.burst * scale - 10, y - 5);
+        }
+
+        // Animate current process
+        if (processIdx < schedule.length) {
+            const proc = schedule[processIdx];
+            const y = 80;
+            const barStart = 100 + proc.start * scale;
+            const barWidth = Math.min(processFrame, proc.burst) * scale;
+
+            // Draw full outline bar for current process
+            ctx.save();
+            ctx.strokeStyle = "#333";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(barStart, y, proc.burst * scale, 30);
+            ctx.restore();
+
+            // Draw partially filled bar for current frame progress
+            ctx.fillStyle = proc.color;
+            ctx.fillRect(barStart, y, barWidth, 30);
+
+            if (barWidth > 0) {
+                ctx.fillStyle = "#333";
+                ctx.font = "16px Arial";
+                ctx.fillText(proc.id, barStart + 5, y + 20);
+            }
+
+            if (processFrame > 0) {
+                ctx.font = "13px Arial";
+                ctx.fillStyle = "#333";
+                ctx.fillText(proc.start, barStart - 10, y - 5);
+                if (processFrame >= proc.burst) {
+                    ctx.fillText(proc.finish, barStart + proc.burst * scale - 10, y - 5);
+                }
+            }
+
+            // Red time marker
+            if (processFrame <= proc.burst) {
+                ctx.save();
+                ctx.strokeStyle = "#FF0000";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(100 + (proc.start + processFrame) * scale, 60);
+                ctx.lineTo(100 + (proc.start + processFrame) * scale, 150);
+                ctx.stroke();
+                ctx.restore();
+                ctx.fillStyle = "#FF0000";
+                ctx.font = "15px Arial";
+                ctx.fillText("Time: " + (proc.start + processFrame) + " ms", 10, 30);
+            }
+        }
+
+        // Animation control
+        if (processIdx < schedule.length) {
+            if (!isPaused) {
+                if (processFrame < schedule[processIdx].burst) {
+                    processFrame++;
+                    setTimeout(animateGantt, frameDelay);
+                } else {
+                    isPaused = true;
+                    setTimeout(() => {
+                        processIdx++;
+                        processFrame = 0;
+                        isPaused = false;
+                        animateGantt();
+                    }, processPauseDuration);
+                }
+            }
+        }
+    }
+
+    // Show empty chart first, then start animation
+    setTimeout(animateGantt, 1200);
+    </script>
+</body>
+</html>
